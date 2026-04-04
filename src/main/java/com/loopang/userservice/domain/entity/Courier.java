@@ -1,6 +1,5 @@
 package com.loopang.userservice.domain.entity;
 
-
 import com.loopang.common.domain.BaseUserEntity;
 import com.loopang.userservice.domain.vo.DeliveryChargeType;
 import jakarta.persistence.Column;
@@ -14,28 +13,35 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.OneToOne;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import java.util.UUID;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.SQLRestriction;
 
 @Entity
 @Getter
 @Table(name = "p_courier")
+@SQLRestriction("deleted_at IS NULL")
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Courier extends BaseUserEntity {
 
   @Id
   @GeneratedValue(strategy = GenerationType.UUID)
+  @Column(name = "courier_id")
   private UUID id;
 
-  @OneToOne(fetch = FetchType.LAZY) // 지연 로딩 권장
-  @JoinColumn(name = "user_id", nullable = false) // FK 컬럼명 지정
+  @Version
+  private int version;
+
+  @OneToOne(fetch = FetchType.LAZY)
+  @JoinColumn(name = "user_id", nullable = false)
   private User user;
 
-  @Column(length = 10, nullable = false)
+  @Column(length = 10, nullable = false, name = "delivery_charge_type")
   @Enumerated(EnumType.STRING)
   private DeliveryChargeType type;
 
