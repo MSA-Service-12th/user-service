@@ -98,6 +98,12 @@ public class User extends BaseUserEntity {
       return;
     }
     checkMasterId(masterId);
+    if (roleCheck == null) {
+      throw new BadRequestException("권한 검증기가 누락되었습니다.");
+    }
+    if (identityProvider == null) {
+      throw new BadRequestException("인증 제공자가 누락되었습니다.");
+    }
     checkMaster(roleCheck);
     identityProvider.withdraw(id);
     super.delete(masterId);
