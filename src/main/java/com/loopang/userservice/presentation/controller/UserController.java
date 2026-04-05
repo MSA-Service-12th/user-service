@@ -72,7 +72,7 @@ public class UserController {
     public CommonResponse<UserResponseDto> updateUser(
             @PathVariable UUID userId,
             @RequestHeader("X-User-Role") String userRole,
-            @RequestBody UserUpdateRequestDto request) {
+            @Valid @RequestBody UserUpdateRequestDto request) {
         checkMaster(userRole);
         return CommonResponse.success(userService.updateUser(userId, request), "사용자 정보가 수정되었습니다.");
     }
