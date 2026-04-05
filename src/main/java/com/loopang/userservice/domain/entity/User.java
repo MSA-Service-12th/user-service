@@ -76,8 +76,16 @@ public class User extends BaseUserEntity {
     if (approved != null) this.approved = approved;
   }
 
+  // TODO: SecurityUtil + RoleCheck 연동 후 softDelete → delete로 전환
+  public void softDelete(UUID deletedBy) {
+    if (this.getDeletedAt() != null) {
+      return;
+    }
+    super.delete(deletedBy);
+  }
+
   private void checkMasterId(UUID masterId) {
-    if (!StringUtils.hasText(String.valueOf(masterId))) {
+    if (masterId == null) {
       throw new BadRequestException("관리자 아이디가 누락되었습니다.");
     }
   }
@@ -88,8 +96,8 @@ public class User extends BaseUserEntity {
     }
     checkMasterId(masterId);
     checkMaster(roleCheck);
-    super.delete(masterId);
     identityProvider.withdraw(id);
+    super.delete(masterId);
   }
 
   private void checkMaster(RoleCheck roleCheck) {

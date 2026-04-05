@@ -5,6 +5,6 @@ import com.loopang.common.exception.ConflictException;
 public class UserEmailDuplicateException extends ConflictException {
 
     public UserEmailDuplicateException(String email) {
-        super("이미 사용중인 이메일입니다: " + email);
+        super("이미 사용중인 이메일입니다.");
     }
 }

@@ -14,14 +14,16 @@ import com.loopang.userservice.presentation.dto.UserUpdateRequestDto;
 import com.loopang.userservice.presentation.dto.response.SignupResponseDto;
 import com.loopang.userservice.presentation.dto.response.TokenResponseDto;
 import com.loopang.userservice.presentation.dto.response.UserResponseDto;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.UUID;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -35,29 +37,32 @@ public class UserService {
         if (userRepository.existsByEmail(request.getEmail())) {
             throw new UserEmailDuplicateException(request.getEmail());
         }
-
         if (userRepository.existsBySlackId(request.getSlackId())) {
             throw new UserSlackIdDuplicateException(request.getSlackId());
         }
 
-        // Keycloak에 유저 등록 → UUID 반환
         UUID keycloakUserId = identityProvider.register(request.getEmail(), request.getPassword());
 
-        // DB에 유저 저장
-        User user = User.builder()
-                .id(keycloakUserId)
-                .email(request.getEmail())
-                .name(request.getName())
-                .slackId(request.getSlackId())
-                .role(request.getRole())
-                .hubInfo(new HubInfo(request.getHubId(), ""))  // TODO: HubProvider로 허브명 조회
-                .companyInfo(request.getCompanyId() != null
-                        ? new CompanyInfo(request.getCompanyId(), "")  // TODO: CompanyProvider로 업체명 조회
-                        : null)
-                .approved(false)
-                .build();
+        try {
+            User user = User.builder()
+                    .id(keycloakUserId)
+                    .email(request.getEmail())
+                    .name(request.getName())
+                    .slackId(request.getSlackId())
+                    .role(request.getRole())
+                    .hubInfo(new HubInfo(request.getHubId(), ""))
+                    .companyInfo(request.getCompanyId() != null
+                            ? new CompanyInfo(request.getCompanyId(), "")
+                            : null)
+                    .approved(false)
+                    .build();
 
-        return SignupResponseDto.from(userRepository.save(user));
+            return SignupResponseDto.from(userRepository.save(user));
+        } catch (Exception e) {
+            log.error("DB 저장 실패, Keycloak 유저 롤백: {}", keycloakUserId);
+            identityProvider.withdraw(keycloakUserId);
+            throw e;
+        }
     }
 
     public TokenResponseDto login(LoginRequestDto request) {
@@ -100,8 +105,8 @@ public class UserService {
     @Transactional
     public void deleteUser(UUID userId) {
         User user = findUserById(userId);
-        // TODO: SecurityUtil + RoleCheck 연동 후 수정
-        user.delete(null);
+        // TODO: SecurityUtil + RoleCheck 연동 후 user.delete(masterId, roleCheck, identityProvider) 전환
+        user.softDelete(null);
     }
 
     private User findUserById(UUID userId) {
