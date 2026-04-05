@@ -32,12 +32,19 @@ public class HubInfo {
     this.hubName = hub.getHubName();
   }
 
-  // 임시: HubProvider 없이 hubId만으로 생성 (Feign 연동 전)
+  // TODO: HubProvider 연동 후 이 임시 생성자 제거하고 위 생성자로 통일
   public HubInfo(UUID hubId, String hubName) {
     if (hubId == null) {
-      throw new BadRequestException("허브 ID는 필수입니다.");
+      throw new BadRequestException("hubId는 필수입니다.");
     }
     this.hubId = hubId;
     this.hubName = hubName != null ? hubName : "";
+    // TODO: HubProvider 연동 후 아래 검증 활성화
+    // if (hubName == null) {
+    //   throw new BadRequestException("hubName은 필수입니다.");
+    // }
+    // if (hubName.length() > 50) {
+    //   throw new BadRequestException("hubName 길이는 50자를 초과할 수 없습니다.");
+    // }
   }
 }
