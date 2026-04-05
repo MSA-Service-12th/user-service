@@ -35,7 +35,7 @@ public class UserController {
 
     @PostMapping("/login")
     public CommonResponse<TokenResponseDto> login(@Valid @RequestBody LoginRequestDto request) {
-        return CommonResponse.success(userService.login(request), "로그인에 성공했습니다.");
+        return CommonResponse.success(TokenResponseDto.from(userService.login(request)), "로그인에 성공했습니다.");
     }
 
     @PostMapping("/logout")

@@ -1,6 +1,6 @@
 package com.loopang.userservice.domain.service;
 
-import com.loopang.userservice.presentation.dto.response.TokenResponseDto;
+import com.loopang.userservice.domain.service.dto.TokenData;
 
 import java.util.UUID;
 
@@ -8,7 +8,7 @@ public interface IdentityProvider {
 
   UUID register(String email, String password);
 
-  TokenResponseDto login(String email, String password);
+  TokenData login(String email, String password);
 
   void logout(String refreshToken);
 

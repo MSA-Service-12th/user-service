@@ -12,7 +12,7 @@ import com.loopang.userservice.presentation.dto.LoginRequestDto;
 import com.loopang.userservice.presentation.dto.SignupRequestDto;
 import com.loopang.userservice.presentation.dto.UserUpdateRequestDto;
 import com.loopang.userservice.presentation.dto.response.SignupResponseDto;
-import com.loopang.userservice.presentation.dto.response.TokenResponseDto;
+import com.loopang.userservice.domain.service.dto.TokenData;
 import com.loopang.userservice.presentation.dto.response.UserResponseDto;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -65,7 +65,7 @@ public class UserService {
         }
     }
 
-    public TokenResponseDto login(LoginRequestDto request) {
+    public TokenData login(LoginRequestDto request) {
         return identityProvider.login(request.getEmail(), request.getPassword());
     }
 

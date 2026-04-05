@@ -3,7 +3,7 @@ package com.loopang.userservice.infrastructure.keycloak;
 import com.loopang.common.exception.InternalServerException;
 import com.loopang.common.exception.UnAuthorizedException;
 import com.loopang.userservice.domain.service.IdentityProvider;
-import com.loopang.userservice.presentation.dto.response.TokenResponseDto;
+import com.loopang.userservice.domain.service.dto.TokenData;
 import jakarta.ws.rs.core.Response;
 import lombok.extern.slf4j.Slf4j;
 import org.keycloak.OAuth2Constants;
@@ -75,7 +75,7 @@ public class KeycloakIdentityProvider implements IdentityProvider {
     }
 
     @Override
-    public TokenResponseDto login(String email, String password) {
+    public TokenData login(String email, String password) {
         String tokenUrl = properties.getServerUrl()
                 + "/realms/" + properties.getRealm()
                 + "/protocol/openid-connect/token";
@@ -101,7 +101,7 @@ public class KeycloakIdentityProvider implements IdentityProvider {
             Map body = response.getBody();
             log.info("[Keycloak] 로그인 성공: {}", email);
 
-            return TokenResponseDto.builder()
+            return TokenData.builder()
                     .accessToken((String) body.get("access_token"))
                     .refreshToken((String) body.get("refresh_token"))
                     .tokenType((String) body.get("token_type"))

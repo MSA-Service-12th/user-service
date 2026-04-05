@@ -34,7 +34,10 @@ public class HubInfo {
 
   // 임시: HubProvider 없이 hubId만으로 생성 (Feign 연동 전)
   public HubInfo(UUID hubId, String hubName) {
+    if (hubId == null) {
+      throw new BadRequestException("허브 ID는 필수입니다.");
+    }
     this.hubId = hubId;
-    this.hubName = hubName;
+    this.hubName = hubName != null ? hubName : "";
   }
 }
