@@ -1,14 +1,15 @@
 package com.loopang.userservice.presentation.dto;
 
 import com.loopang.userservice.domain.vo.UserType;
-import lombok.AccessLevel;
+import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 import java.util.UUID;
 
 @Getter
-@NoArgsConstructor(access = AccessLevel.PRIVATE)
+@NoArgsConstructor
+@AllArgsConstructor
 public class UserUpdateRequestDto {
 
     private String name;

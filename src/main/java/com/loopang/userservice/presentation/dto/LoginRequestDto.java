@@ -1,12 +1,13 @@
 package com.loopang.userservice.presentation.dto;
 
 import jakarta.validation.constraints.NotBlank;
-import lombok.AccessLevel;
+import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 @Getter
-@NoArgsConstructor(access = AccessLevel.PRIVATE)
+@NoArgsConstructor
+@AllArgsConstructor
 public class LoginRequestDto {
 
     @NotBlank(message = "이메일을 입력해주세요.")
