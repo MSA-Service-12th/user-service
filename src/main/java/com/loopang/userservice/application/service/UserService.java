@@ -113,10 +113,10 @@ public class UserService {
     }
 
     @Transactional
-    public void deleteUser(UUID userId) {
+    public void deleteUser(UUID userId, UUID requesterId) {
         User user = findUserById(userId);
         // TODO: SecurityUtil + RoleCheck 연동 후 user.delete(masterId, roleCheck, identityProvider) 전환
-        user.softDelete(null);
+        user.softDelete(requesterId);
     }
 
     private User findUserById(UUID userId) {

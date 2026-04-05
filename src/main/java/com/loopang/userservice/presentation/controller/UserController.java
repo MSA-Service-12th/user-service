@@ -80,9 +80,10 @@ public class UserController {
     @DeleteMapping("/{userId}")
     public CommonResponse<Void> deleteUser(
             @PathVariable UUID userId,
+            @RequestHeader("X-User-UUID") UUID requesterId,
             @RequestHeader("X-User-Role") String userRole) {
         checkMaster(userRole);
-        userService.deleteUser(userId);
+        userService.deleteUser(userId, requesterId);
         return CommonResponse.success(null, "사용자가 삭제되었습니다.");
     }
 
