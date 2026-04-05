@@ -13,4 +13,8 @@ public enum UserType {
   COMPANY("업체 담당자"),
   PENDING("대기");
   private final String description;
+
+  public String toRole() {
+    return "ROLE_" + this.name();
+  }
 }
