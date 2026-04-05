@@ -66,7 +66,11 @@ public class UserService {
             return SignupResponseDto.from(userRepository.save(user));
         } catch (Exception e) {
             log.error("DB 저장 실패, Keycloak 유저 롤백: {}", keycloakUserId);
-            identityProvider.withdraw(keycloakUserId);
+            try {
+                identityProvider.withdraw(keycloakUserId);
+            } catch (Exception rollbackEx) {
+                log.error("Keycloak 롤백 실패: {}", keycloakUserId, rollbackEx);
+            }
             throw e;
         }
     }
