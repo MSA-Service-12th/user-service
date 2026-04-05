@@ -1,9 +1,11 @@
 package com.loopang.userservice.application.service;
 
 import com.loopang.userservice.domain.entity.User;
+import com.loopang.common.exception.ForbiddenException;
 import com.loopang.userservice.domain.exception.UserEmailDuplicateException;
 import com.loopang.userservice.domain.exception.UserNotFoundException;
 import com.loopang.userservice.domain.exception.UserSlackIdDuplicateException;
+import com.loopang.userservice.domain.vo.UserType;
 import com.loopang.userservice.domain.repository.UserRepository;
 import com.loopang.userservice.domain.service.IdentityProvider;
 import com.loopang.userservice.domain.vo.CompanyInfo;
@@ -34,6 +36,10 @@ public class UserService {
 
     @Transactional
     public SignupResponseDto signup(SignupRequestDto request) {
+        if (request.getRole() == UserType.MASTER) {
+            throw new ForbiddenException("MASTER 권한은 직접 지정할 수 없습니다.");
+        }
+
         if (userRepository.existsByEmail(request.getEmail())) {
             throw new UserEmailDuplicateException(request.getEmail());
         }
