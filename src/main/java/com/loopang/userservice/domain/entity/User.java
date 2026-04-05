@@ -76,7 +76,8 @@ public class User extends BaseUserEntity {
     if (approved != null) this.approved = approved;
   }
 
-  // TODO: SecurityUtil + RoleCheck 연동 후 softDelete → delete로 전환
+  // TODO: SecurityUtil 전환 후 softDelete 제거, delete()로 통일
+  // TODO: deletedBy에 현재 유저 ID 전달 (SecurityUtil.getCurrentUserIdOrThrow())
   public void softDelete(UUID deletedBy) {
     if (this.getDeletedAt() != null) {
       return;
@@ -90,6 +91,8 @@ public class User extends BaseUserEntity {
     }
   }
 
+  // TODO: SecurityUtil 전환 후 이 메서드 사용
+  // TODO: Keycloak-DB 정합성 보장을 위해 Outbox 패턴 또는 보상 트랜잭션 적용
   public void delete(UUID masterId, RoleCheck roleCheck, IdentityProvider identityProvider) {
     if (this.getDeletedAt() != null) {
       return;
