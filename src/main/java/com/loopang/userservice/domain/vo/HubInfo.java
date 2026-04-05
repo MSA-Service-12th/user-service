@@ -25,7 +25,7 @@ public class HubInfo {
       throw new BadRequestException("소속 허브 등록/수정을 위한 필수 항목이 누락되었습니다.");
     }
     HubInfo hub = hubProvider.get(id);
-    if (hub == null) {
+    if (hub == null || hub.getHubId() == null || hub.getHubName() == null || hub.getHubName().isBlank()) {
       throw new BadRequestException("소속 허브를 찾을 수 없습니다.");
     }
     this.hubId = hub.getHubId();
