@@ -105,6 +105,8 @@ public class UserService {
             page = userRepository.findAllByRoleAndHubInfo_HubId(role, hubId, pageable);
         } else if (role != null) {
             page = userRepository.findAllByRole(role, pageable);
+        } else if (hubId != null) {
+            page = userRepository.findAllByHubInfo_HubId(hubId, pageable);
         } else {
             page = userRepository.findAll(pageable);
         }
@@ -122,13 +124,26 @@ public class UserService {
 
     /**
      * 내부 서비스 호출용 리스트 조회 (페이지네이션 없음).
-     * <p>특정 role의 사용자를 전체 조회하거나, hubId까지 함께 필터링한다.
+     * <p>role/hubId 조합 4가지를 모두 처리:
+     * <ul>
+     *   <li>role + hubId 둘 다 → 두 조건 AND</li>
+     *   <li>role만 → role 필터</li>
+     *   <li>hubId만 → 허브 필터</li>
+     *   <li>둘 다 null → 전체 (보호용 fallback)</li>
+     * </ul>
      * 결과는 {@code enabled=true}인 사용자만 반환 (배정 후보 부적합 케이스 제외).</p>
      */
     public List<UserResponseDto> searchInternal(UserType role, UUID hubId) {
-        List<User> users = (hubId != null)
-                ? userRepository.findAllByRoleAndHubInfo_HubId(role, hubId)
-                : userRepository.findAllByRole(role);
+        List<User> users;
+        if (role != null && hubId != null) {
+            users = userRepository.findAllByRoleAndHubInfo_HubId(role, hubId);
+        } else if (role != null) {
+            users = userRepository.findAllByRole(role);
+        } else if (hubId != null) {
+            users = userRepository.findAllByHubInfo_HubId(hubId);
+        } else {
+            users = userRepository.findAll(Pageable.unpaged()).getContent();
+        }
 
         return users.stream()
                 .filter(User::isEnabled)
