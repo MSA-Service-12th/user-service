@@ -1,5 +1,6 @@
 package com.loopang.userservice.infrastructure.feign;
 
+import com.loopang.common.exception.BadRequestException;
 import com.loopang.common.exception.InternalServerException;
 import com.loopang.common.exception.NotFoundException;
 import com.loopang.common.response.CommonResponse;
@@ -37,8 +38,10 @@ public class HubProviderImpl implements HubProvider {
 
     @Override
     public HubInfo get(UUID hubId) {
+        // null 반환은 호출자(CourierService 등)가 non-null 가정으로 NPE 위험.
+        // HubProvider 계약은 non-nullable — 명시적 예외로 끊는다.
         if (hubId == null) {
-            return null;
+            throw new BadRequestException("hubId는 필수입니다.");
         }
 
         CommonResponse<HubData> response;

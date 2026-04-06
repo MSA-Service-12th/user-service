@@ -38,18 +38,21 @@ public class CourierService {
     private final CourierRepository courierRepository;
     private final UserRepository userRepository;
     private final HubProvider hubProvider;
+    private final CourierTurnAllocator turnAllocator;
 
     /**
      * 배송담당자 등록.
      * <ol>
      *   <li>userId로 user 조회 + 검증 (role=DELIVERY, enabled=true, hubInfo!=null)</li>
      *   <li>이미 등록된 user인지 중복 체크</li>
-     *   <li>HubProvider로 hub-service에서 최신 hubInfo 조회 — 회원가입 시점 이후 허브명이 바뀌었을 수 있음</li>
-     *   <li>같은 허브 + 같은 타입의 max(deliveryTurn) + 1로 자동 할당</li>
-     *   <li>Courier 생성 + 저장</li>
+     *   <li>HubProvider로 hub-service에서 최신 hubInfo 조회 (외부 호출, readOnly tx 안)</li>
+     *   <li>{@link CourierTurnAllocator#registerInNewTx}을 호출 — 매 시도가 새 트랜잭션이라
+     *       {@code DataIntegrityViolationException}이 발생해도 부모 tx는 영향 없이 다음 시도로 진행</li>
      * </ol>
+     *
+     * <p>본 메서드는 클래스 레벨 {@code @Transactional(readOnly=true)}만 적용된다.
+     * 쓰기 작업은 전부 {@code CourierTurnAllocator}의 {@code REQUIRES_NEW} 메서드에서 일어난다.</p>
      */
-    @Transactional
     public CourierResponseDto register(CourierCreateRequestDto request) {
         User user = userRepository.findById(request.getUserId())
                 .orElseThrow(() -> new UserNotFoundException(request.getUserId()));
@@ -72,9 +75,22 @@ public class CourierService {
         // 등록 시점의 최신 허브 정보 조회 (회원가입 시점과 다를 수 있음)
         HubInfo hubInfo = hubProvider.get(user.getHubInfo().getHubId());
 
-        // (hub_id, type, delivery_turn) 유니크 제약 + 충돌 시 재시도로 race condition 방어
-        Courier saved = saveWithTurnRetry(user, hubInfo, request.getDeliveryChargeType());
-        return CourierResponseDto.from(saved);
+        // 새 트랜잭션 단위로 재시도 — JPA rollback-only 마킹 회피
+        for (int attempt = 1; attempt <= MAX_TURN_RETRY; attempt++) {
+            try {
+                Courier saved = turnAllocator.registerInNewTx(
+                        user.getId(), hubInfo, request.getDeliveryChargeType());
+                return CourierResponseDto.from(saved);
+            } catch (DataIntegrityViolationException e) {
+                log.warn("[CourierService] turn 충돌 재시도 (attempt {}/{}, userId={}, hubId={}, type={})",
+                        attempt, MAX_TURN_RETRY, user.getId(), hubInfo.getHubId(), request.getDeliveryChargeType());
+                if (attempt == MAX_TURN_RETRY) {
+                    throw new InternalServerException(
+                            "배송담당자 등록 중 동시성 충돌이 반복되었습니다.");
+                }
+            }
+        }
+        throw new InternalServerException("배송담당자 등록에 실패했습니다.");
     }
 
     public CourierResponseDto getCourier(UUID courierId) {
@@ -97,39 +113,31 @@ public class CourierService {
 
     /**
      * 타입 변경 시 새 deliveryTurn을 자동 재할당.
-     * (HUB → COMPANY로 바뀌면 새 타입의 max+1 자리로 들어감)
-     * 동시 변경 race를 막기 위해 unique 충돌 시 재시도.
+     * 매 시도가 새 트랜잭션이라 unique 충돌 발생 시 부모 tx 영향 없이 재시도.
      */
-    @Transactional
     public CourierResponseDto updateCourier(UUID courierId, CourierUpdateRequestDto request) {
-        Courier courier = findCourierById(courierId);
+        Courier courier = findCourierById(courierId); // 존재 여부 1차 확인
 
-        if (request.getDeliveryChargeType() != null
-                && request.getDeliveryChargeType() != courier.getType()) {
-            DeliveryChargeType newType = request.getDeliveryChargeType();
-            UUID hubId = courier.getHubInfo().getHubId();
+        if (request.getDeliveryChargeType() == null
+                || request.getDeliveryChargeType() == courier.getType()) {
+            return CourierResponseDto.from(courier);
+        }
 
-            for (int attempt = 1; attempt <= MAX_TURN_RETRY; attempt++) {
-                // monotonic 할당 — soft-deleted 행도 포함한 max + 1
-                int nextTurn = courierRepository
-                        .findMaxDeliveryTurnIncludingDeleted(hubId, newType.name()) + 1;
-                try {
-                    courier.changeType(newType, nextTurn);
-                    // saveAndFlush — commit 시점이 아닌 지금 즉시 flush해 unique 충돌을 try/catch에서 잡음
-                    courierRepository.saveAndFlush(courier);
-                    break;
-                } catch (DataIntegrityViolationException e) {
-                    log.warn("[CourierService] turn 충돌 재시도 (attempt {}/{}, hubId={}, type={})",
-                            attempt, MAX_TURN_RETRY, hubId, newType);
-                    if (attempt == MAX_TURN_RETRY) {
-                        throw new InternalServerException(
-                                "배송담당자 타입 변경 중 동시성 충돌이 반복되었습니다.");
-                    }
+        DeliveryChargeType newType = request.getDeliveryChargeType();
+        for (int attempt = 1; attempt <= MAX_TURN_RETRY; attempt++) {
+            try {
+                Courier updated = turnAllocator.changeTypeInNewTx(courierId, newType);
+                return CourierResponseDto.from(updated);
+            } catch (DataIntegrityViolationException e) {
+                log.warn("[CourierService] turn 충돌 재시도 (attempt {}/{}, courierId={}, newType={})",
+                        attempt, MAX_TURN_RETRY, courierId, newType);
+                if (attempt == MAX_TURN_RETRY) {
+                    throw new InternalServerException(
+                            "배송담당자 타입 변경 중 동시성 충돌이 반복되었습니다.");
                 }
             }
         }
-
-        return CourierResponseDto.from(courier);
+        throw new InternalServerException("배송담당자 타입 변경에 실패했습니다.");
     }
 
     @Transactional
@@ -160,38 +168,5 @@ public class CourierService {
     private Courier findCourierById(UUID courierId) {
         return courierRepository.findById(courierId)
                 .orElseThrow(() -> new CourierNotFoundException(courierId));
-    }
-
-    /**
-     * 신규 등록 시 (hub_id, type, delivery_turn) unique 제약 충돌이 나면 max+1을 다시 읽어 재시도.
-     * 최대 {@value #MAX_TURN_RETRY}회.
-     *
-     * <p>turn 계산은 {@link CourierRepository#findMaxDeliveryTurnIncludingDeleted}를 사용해
-     * soft-deleted 행까지 포함한 monotonic 할당. 이래야 등록/삭제가 반복돼도 turn이 tombstone과
-     * 충돌해 무한 retry로 빠지지 않는다.</p>
-     *
-     * <p>{@code saveAndFlush}로 commit이 아닌 즉시 flush를 강제해 unique 충돌을 try/catch에서 잡는다.
-     * {@code save}만 호출하면 충돌이 commit 시점에 발생해 try/catch를 우회해버린다.</p>
-     */
-    private Courier saveWithTurnRetry(User user,
-                                      HubInfo hubInfo,
-                                      DeliveryChargeType type) {
-        for (int attempt = 1; attempt <= MAX_TURN_RETRY; attempt++) {
-            int nextTurn = courierRepository
-                    .findMaxDeliveryTurnIncludingDeleted(hubInfo.getHubId(), type.name()) + 1;
-            try {
-                Courier courier = Courier.register(user, hubInfo, type, nextTurn);
-                return courierRepository.saveAndFlush(courier);
-            } catch (DataIntegrityViolationException e) {
-                log.warn("[CourierService] turn 충돌 재시도 (attempt {}/{}, hubId={}, type={}, candidateTurn={})",
-                        attempt, MAX_TURN_RETRY, hubInfo.getHubId(), type, nextTurn);
-                if (attempt == MAX_TURN_RETRY) {
-                    throw new InternalServerException(
-                            "배송담당자 등록 중 동시성 충돌이 반복되었습니다.");
-                }
-            }
-        }
-        // unreachable
-        throw new InternalServerException("배송담당자 등록에 실패했습니다.");
     }
 }
