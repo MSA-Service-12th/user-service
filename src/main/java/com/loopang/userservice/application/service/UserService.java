@@ -7,6 +7,7 @@ import com.loopang.userservice.domain.exception.UserNotFoundException;
 import com.loopang.userservice.domain.exception.UserSlackIdDuplicateException;
 import com.loopang.userservice.domain.vo.UserType;
 import com.loopang.userservice.domain.repository.UserRepository;
+import com.loopang.userservice.domain.service.HubProvider;
 import com.loopang.userservice.domain.service.IdentityProvider;
 import com.loopang.userservice.domain.vo.CompanyInfo;
 import com.loopang.userservice.domain.vo.HubInfo;
@@ -34,6 +35,7 @@ public class UserService {
 
     private final UserRepository userRepository;
     private final IdentityProvider identityProvider;
+    private final HubProvider hubProvider;
 
     @Transactional
     public SignupResponseDto signup(SignupRequestDto request) {
@@ -48,6 +50,11 @@ public class UserService {
             throw new UserSlackIdDuplicateException(request.getSlackId());
         }
 
+        // hub-service Feign으로 실제 hubName을 채운다 (이전엔 빈 문자열로 저장됐음)
+        HubInfo hubInfo = request.getHubId() != null
+                ? hubProvider.get(request.getHubId())
+                : null;
+
         UUID keycloakUserId = identityProvider.register(request.getEmail(), request.getPassword());
 
         try {
@@ -57,7 +64,7 @@ public class UserService {
                     .name(request.getName())
                     .slackId(request.getSlackId())
                     .role(request.getRole())
-                    .hubInfo(new HubInfo(request.getHubId(), ""))
+                    .hubInfo(hubInfo)
                     .companyInfo(request.getCompanyId() != null
                             ? new CompanyInfo(request.getCompanyId(), "")
                             : null)
@@ -92,8 +99,16 @@ public class UserService {
         return UserResponseDto.from(findUserById(userId));
     }
 
-    public Page<UserResponseDto> getUsers(Pageable pageable) {
-        return userRepository.findAll(pageable).map(UserResponseDto::from);
+    public Page<UserResponseDto> getUsers(UserType role, UUID hubId, Pageable pageable) {
+        Page<User> page;
+        if (role != null && hubId != null) {
+            page = userRepository.findAllByRoleAndHubInfo_HubId(role, hubId, pageable);
+        } else if (role != null) {
+            page = userRepository.findAllByRole(role, pageable);
+        } else {
+            page = userRepository.findAll(pageable);
+        }
+        return page.map(UserResponseDto::from);
     }
 
     /**
@@ -125,8 +140,9 @@ public class UserService {
     public UserResponseDto updateUser(UUID userId, UserUpdateRequestDto request) {
         User user = findUserById(userId);
 
+        // 허브 변경 시에도 hub-service Feign으로 실제 hubName을 가져온다.
         HubInfo hubInfo = request.getHubId() != null
-                ? new HubInfo(request.getHubId(), "")
+                ? hubProvider.get(request.getHubId())
                 : null;
         CompanyInfo companyInfo = request.getCompanyId() != null
                 ? new CompanyInfo(request.getCompanyId(), "")
