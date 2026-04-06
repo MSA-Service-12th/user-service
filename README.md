@@ -61,7 +61,7 @@ loopang MSA 프로젝트의 **유저 + 배송담당자(Courier) 도메인** 서�
 | GET | `/internal/users/{userId}` | 단건 조회 (권한 검증 없음) |
 | GET | `/internal/users?role=&hubId=` | 리스트 조회 (페이지네이션 X, `enabled=true` 필터) |
 
-> ⚠️ **`/internal/**` 경로는 gateway 라우팅에서 제외되어 있습니다.** 서비스 간 Feign 호출은 Eureka 디스커버리로 user-service 인스턴스에 직접 도달하므로 gateway 우회. 외부 클라이언트는 접근 불가.
+> ⚠️ **`/internal/**` 경로는 gateway 라우팅에서 제외되어 있습니다.** 서비스 간 Feign 호출은 Eureka 디스커버리로 user-service 인스턴스에 직접 도달하므로 gateway 우회. 외부 클라이언트는 gateway를 통해 접근할 수 없으나, **user-service 포드/인스턴스가 네트워크에서 직접 노출되면 무인증 엔드포인트가 그대로 열린다**. ALB Listener Rule, Security Group, 또는 내부망 접근 제한 등 배포 시 네트워크 보안 설정이 적용된 환경을 전제로 한다.
 
 ### 🚚 배송담당자 (외부 — `/api/couriers/**`)
 
@@ -129,7 +129,7 @@ loopang MSA 프로젝트의 **유저 + 배송담당자(Courier) 도메인** 서�
 
 ### 회원가입 (POST /api/users)
 
-```
+```text
 1. Request 검증 (이메일/슬랙ID 중복, MASTER 권한 차단)
 2. HubProvider.get(hubId)
    ├─ FeignException.NotFound → NotFoundException(404)
@@ -143,21 +143,21 @@ loopang MSA 프로젝트의 **유저 + 배송담당자(Courier) 도메인** 서�
 
 ### 배송담당자 등록 (POST /api/couriers)
 
-```
+```text
 1. user 조회 + 검증 (role=DELIVERY, enabled=true, hubInfo 필수)
 2. 중복 등록 확인 (findByUser_Id)
 3. HubProvider.get(user.hubInfo.hubId)
    → 회원가입 시점 이후 허브명이 바뀌었을 수 있으므로 hub-service에서 최신값 fetch
 4. saveWithTurnRetry() — 동시성 방어
-   ├─ findMaxDeliveryTurn(hubId, type) + 1
-   ├─ Courier.register(user, hubInfo, type, nextTurn) → save
+   ├─ findMaxDeliveryTurnIncludingDeleted(hubId, type) + 1   (soft-deleted 포함 monotonic)
+   ├─ Courier.register(user, hubInfo, type, nextTurn) → saveAndFlush
    └─ DataIntegrityViolationException catch 시 max+1 다시 읽고 재시도 (최대 5회)
 5. 5회 모두 실패 시 InternalServerException
 ```
 
 ### 라운드로빈 후보 조회 (GET /internal/couriers)
 
-```
+```text
 delivery-service Feign 호출
   ↓
 1. findAllByHubInfo_HubIdAndTypeOrderByDeliveryTurnAsc(hubId, type)
@@ -178,11 +178,14 @@ delivery-service: 라운드로빈으로 1명 선정 → 배송 레코드에 assi
 | `GET /api/hubs/{hubId}` | 회원가입/수정/Courier 등록 시 최신 `hubName` 조회 |
 
 **오류 처리 (`HubProviderImpl`):**
-| FeignException | 변환 | HTTP |
+
+| 케이스 | 변환 | HTTP |
 |---|---|---|
-| `FeignException.NotFound` | `NotFoundException` | 404 |
-| 그 외 (`5xx`, 타임아웃, 연결 실패) | `InternalServerException` | 500 |
+| `FeignException.NotFound` (404) | `NotFoundException` | 404 |
+| 200 응답 + `data == null` | `NotFoundException` | 404 |
+| 그 외 `FeignException` (5xx, 타임아웃, 연결 실패) | `InternalServerException` | 500 |
 | 응답 직렬화 실패 등 | `InternalServerException` | 500 |
+| 200 응답 + 필수 필드 누락 (`hubId`/`name` null/blank) | `InternalServerException` | 500 |
 | 응답 hubId ≠ 요청 hubId | `InternalServerException` | 500 |
 
 ### Keycloak — `KeycloakIdentityProvider`
@@ -221,7 +224,7 @@ delivery-service: 라운드로빈으로 1명 선정 → 배송 레코드에 assi
 
 ## 🧱 클린 아키텍처
 
-```
+```text
 com.loopang.userservice
 ├── application/
 │   └── service/

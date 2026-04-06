@@ -63,8 +63,17 @@ public class HubProviderImpl implements HubProvider {
 
         HubData data = response != null ? response.getData() : null;
 
-        if (data == null || data.hubId() == null || data.name() == null || data.name().isBlank()) {
+        // 200 응답인데 data 자체가 null → "허브 없음"으로 본다 (404)
+        if (data == null) {
             throw new NotFoundException("소속 허브를 찾을 수 없습니다. hubId=" + hubId);
+        }
+
+        // 200 응답인데 필수 필드가 비어 있는 건 hub-service의 계약 위반(payload 깨짐).
+        // "허브 없음"이 아니라 원격 서비스 오동작이므로 500으로 분리한다.
+        if (data.hubId() == null || data.name() == null || data.name().isBlank()) {
+            log.error("[HubProvider] 응답 payload 누락: hubId={}, data={}", hubId, data);
+            throw new InternalServerException(
+                    "허브 서비스 응답이 올바르지 않습니다. hubId=" + hubId);
         }
 
         // 응답의 hubId가 요청 hubId와 일치하는지 검증 — 업스트림 오동작 방어

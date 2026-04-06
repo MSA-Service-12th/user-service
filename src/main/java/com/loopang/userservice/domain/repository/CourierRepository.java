@@ -13,6 +13,9 @@ public interface CourierRepository {
 
   Courier save(Courier courier);
 
+  // 등록 retry 루프에서 unique 충돌을 즉시 감지하기 위해 명시적 flush가 필요.
+  Courier saveAndFlush(Courier courier);
+
   Optional<Courier> findById(UUID id);
 
   // 한 user는 한 Courier만 — 중복 등록 방지용
@@ -31,8 +34,8 @@ public interface CourierRepository {
   // 페이지네이션 없음 — deliveryTurn ASC 정렬
   List<Courier> findAllByHubInfo_HubIdAndTypeOrderByDeliveryTurnAsc(UUID hubId, DeliveryChargeType type);
 
-  // ─── 등록 시 turn 자동 할당 ───────────────────────────────────────
-  // SELECT MAX(delivery_turn) WHERE hub_id=? AND delivery_charge_type=?
-  // 구현체(JpaCourierRepository)에서 @Query로 명시적 JPQL 작성
-  Optional<Integer> findMaxDeliveryTurn(UUID hubId, DeliveryChargeType type);
+  // ─── 등록 시 turn 자동 할당 (soft-deleted 포함, monotonic) ───────
+  // SELECT COALESCE(MAX(delivery_turn), 0) FROM p_courier WHERE hub_id=? AND delivery_charge_type=?
+  // 구현체(JpaCourierRepository)에서 native query로 @SQLRestriction 우회
+  int findMaxDeliveryTurnIncludingDeleted(UUID hubId, String type);
 }

@@ -73,8 +73,7 @@ public class CourierService {
         HubInfo hubInfo = hubProvider.get(user.getHubInfo().getHubId());
 
         // (hub_id, type, delivery_turn) 유니크 제약 + 충돌 시 재시도로 race condition 방어
-        Courier saved = saveWithTurnRetry(
-                user, hubInfo, request.getDeliveryChargeType(), null);
+        Courier saved = saveWithTurnRetry(user, hubInfo, request.getDeliveryChargeType());
         return CourierResponseDto.from(saved);
     }
 
@@ -111,10 +110,13 @@ public class CourierService {
             UUID hubId = courier.getHubInfo().getHubId();
 
             for (int attempt = 1; attempt <= MAX_TURN_RETRY; attempt++) {
-                int nextTurn = courierRepository.findMaxDeliveryTurn(hubId, newType).orElse(0) + 1;
+                // monotonic 할당 — soft-deleted 행도 포함한 max + 1
+                int nextTurn = courierRepository
+                        .findMaxDeliveryTurnIncludingDeleted(hubId, newType.name()) + 1;
                 try {
                     courier.changeType(newType, nextTurn);
-                    courierRepository.save(courier); // flush 유도해 unique 충돌을 즉시 catch
+                    // saveAndFlush — commit 시점이 아닌 지금 즉시 flush해 unique 충돌을 try/catch에서 잡음
+                    courierRepository.saveAndFlush(courier);
                     break;
                 } catch (DataIntegrityViolationException e) {
                     log.warn("[CourierService] turn 충돌 재시도 (attempt {}/{}, hubId={}, type={})",
@@ -163,16 +165,23 @@ public class CourierService {
     /**
      * 신규 등록 시 (hub_id, type, delivery_turn) unique 제약 충돌이 나면 max+1을 다시 읽어 재시도.
      * 최대 {@value #MAX_TURN_RETRY}회.
+     *
+     * <p>turn 계산은 {@link CourierRepository#findMaxDeliveryTurnIncludingDeleted}를 사용해
+     * soft-deleted 행까지 포함한 monotonic 할당. 이래야 등록/삭제가 반복돼도 turn이 tombstone과
+     * 충돌해 무한 retry로 빠지지 않는다.</p>
+     *
+     * <p>{@code saveAndFlush}로 commit이 아닌 즉시 flush를 강제해 unique 충돌을 try/catch에서 잡는다.
+     * {@code save}만 호출하면 충돌이 commit 시점에 발생해 try/catch를 우회해버린다.</p>
      */
     private Courier saveWithTurnRetry(User user,
                                       HubInfo hubInfo,
-                                      DeliveryChargeType type,
-                                      Integer ignoredCurrentTurn) {
+                                      DeliveryChargeType type) {
         for (int attempt = 1; attempt <= MAX_TURN_RETRY; attempt++) {
-            int nextTurn = courierRepository.findMaxDeliveryTurn(hubInfo.getHubId(), type).orElse(0) + 1;
+            int nextTurn = courierRepository
+                    .findMaxDeliveryTurnIncludingDeleted(hubInfo.getHubId(), type.name()) + 1;
             try {
                 Courier courier = Courier.register(user, hubInfo, type, nextTurn);
-                return courierRepository.save(courier);
+                return courierRepository.saveAndFlush(courier);
             } catch (DataIntegrityViolationException e) {
                 log.warn("[CourierService] turn 충돌 재시도 (attempt {}/{}, hubId={}, type={}, candidateTurn={})",
                         attempt, MAX_TURN_RETRY, hubInfo.getHubId(), type, nextTurn);
