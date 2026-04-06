@@ -8,6 +8,14 @@ spring:
       discovery:
         enabled: true
         service-id: config-server
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: user-group
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+    listener:
+      ack-mode: manual
 
 eureka:
   client:
@@ -25,3 +33,7 @@ keycloak:
   password: ${KEYCLOAK_PASSWORD:admin}
   client-id: ${KEYCLOAK_CLIENT_ID:loopang-client}
   client-secret: ${KEYCLOAK_CLIENT_SECRET}
+
+topics:
+  user:
+    updated: ${TOPICS_USER_UPDATED:user-update-topic}

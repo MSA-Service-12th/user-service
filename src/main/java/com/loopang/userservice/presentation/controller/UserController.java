@@ -73,10 +73,11 @@ public class UserController {
     @PatchMapping("/{userId}")
     public CommonResponse<UserResponseDto> updateUser(
             @PathVariable UUID userId,
+            @RequestHeader("X-User-UUID") UUID requesterId,
             @RequestHeader("X-User-Role") String userRole,
             @Valid @RequestBody UserUpdateRequestDto request) {
         checkMaster(userRole);
-        return CommonResponse.success(userService.updateUser(userId, request), "사용자 정보가 수정되었습니다.");
+        return CommonResponse.success(userService.updateUser(userId, request, requesterId), "사용자 정보가 수정되었습니다.");
     }
 
     @DeleteMapping("/{userId}")

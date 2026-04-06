@@ -2,6 +2,7 @@ package com.loopang.userservice.application.service;
 
 import com.loopang.userservice.domain.entity.User;
 import com.loopang.common.exception.ForbiddenException;
+import com.loopang.userservice.domain.event.UserEvents;
 import com.loopang.userservice.domain.exception.UserEmailDuplicateException;
 import com.loopang.userservice.domain.exception.UserNotFoundException;
 import com.loopang.userservice.domain.exception.UserSlackIdDuplicateException;
@@ -36,6 +37,7 @@ public class UserService {
     private final UserRepository userRepository;
     private final IdentityProvider identityProvider;
     private final HubProvider hubProvider;
+    private final UserEvents userEvents;
 
     @Transactional
     public SignupResponseDto signup(SignupRequestDto request) {
@@ -152,7 +154,7 @@ public class UserService {
     }
 
     @Transactional
-    public UserResponseDto updateUser(UUID userId, UserUpdateRequestDto request) {
+    public UserResponseDto updateUser(UUID userId, UserUpdateRequestDto request, UUID requesterId) {
         User user = findUserById(userId);
 
         // 허브 변경 시에도 hub-service Feign으로 실제 hubName을 가져온다.
@@ -165,6 +167,9 @@ public class UserService {
 
         user.update(request.getName(), request.getSlackId(), request.getRole(),
                 hubInfo, companyInfo, request.getApproved());
+
+        // 변경 이벤트 발행 (Outbox) — company-service 등 구독자가 사용자/담당자 정보 동기화에 사용
+        userEvents.userChanged(user, requesterId);
 
         return UserResponseDto.from(user);
     }
