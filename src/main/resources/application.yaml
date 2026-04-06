@@ -8,6 +8,10 @@ spring:
       discovery:
         enabled: true
         service-id: config-server
+  kafka:
+    # 현재 user-service는 producer 전용 (Outbox로 user-update-topic 발행).
+    # consumer 설정은 향후 hub.updated 등 구독 추가 시 함께 넣는다.
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
 
 eureka:
   client:
@@ -25,3 +29,7 @@ keycloak:
   password: ${KEYCLOAK_PASSWORD:admin}
   client-id: ${KEYCLOAK_CLIENT_ID:loopang-client}
   client-secret: ${KEYCLOAK_CLIENT_SECRET}
+
+topics:
+  user:
+    updated: ${TOPICS_USER_UPDATED:user-update-topic}
