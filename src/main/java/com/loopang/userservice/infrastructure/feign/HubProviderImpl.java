@@ -72,9 +72,13 @@ public class HubProviderImpl implements HubProvider {
         }
 
         // 200 응답인데 필수 필드가 비어 있는 건 hub-service의 계약 위반(payload 깨짐).
-        // "허브 없음"이 아니라 원격 서비스 오동작이므로 500으로 분리한다.
-        if (data.hubId() == null || data.name() == null || data.name().isBlank()) {
-            log.error("[HubProvider] 응답 payload 누락: hubId={}, data={}", hubId, data);
+        // hubName 50자 초과도 여기서 같이 잡는다 — HubInfo VO 생성자/저장 단계까지 새어나가면
+        // "허브 서비스 응답이 올바르지 않습니다"라는 의도한 분류 대신 다른 오류로 분류돼 진단이 어려워짐.
+        if (data.hubId() == null
+                || data.name() == null
+                || data.name().isBlank()
+                || data.name().length() > HubInfo.MAX_HUB_NAME_LENGTH) {
+            log.error("[HubProvider] 응답 payload 이상: hubId={}, data={}", hubId, data);
             throw new InternalServerException(
                     "허브 서비스 응답이 올바르지 않습니다. hubId=" + hubId);
         }

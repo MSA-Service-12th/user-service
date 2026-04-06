@@ -13,10 +13,12 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 public class HubInfo {
 
+  public static final int MAX_HUB_NAME_LENGTH = 50;
+
   @Column(name = "hub_id", nullable = false)
   private UUID hubId;
 
-  @Column(length = 50, name = "hub_name", nullable = false)
+  @Column(length = MAX_HUB_NAME_LENGTH, name = "hub_name", nullable = false)
   private String hubName;
 
   // TODO: HubProvider 구현 후 이 생성자 사용
