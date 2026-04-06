@@ -62,9 +62,11 @@ public class UserController {
     @GetMapping
     public CommonResponse<List<UserResponseDto>> getUsers(
             Pageable pageable,
-            @RequestHeader("X-User-Role") String userRole) {
+            @RequestHeader("X-User-Role") String userRole,
+            @RequestParam(required = false) UserType role,
+            @RequestParam(required = false) UUID hubId) {
         checkMaster(userRole);
-        Page<UserResponseDto> page = userService.getUsers(pageable);
+        Page<UserResponseDto> page = userService.getUsers(role, hubId, pageable);
         return CommonResponse.success(page.getContent(), "사용자 목록 조회에 성공했습니다.", PageInfo.from(page));
     }
 

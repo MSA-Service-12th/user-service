@@ -7,6 +7,7 @@ import com.loopang.userservice.domain.exception.UserNotFoundException;
 import com.loopang.userservice.domain.exception.UserSlackIdDuplicateException;
 import com.loopang.userservice.domain.vo.UserType;
 import com.loopang.userservice.domain.repository.UserRepository;
+import com.loopang.userservice.domain.service.HubProvider;
 import com.loopang.userservice.domain.service.IdentityProvider;
 import com.loopang.userservice.domain.vo.CompanyInfo;
 import com.loopang.userservice.domain.vo.HubInfo;
@@ -23,6 +24,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.UUID;
 
 @Slf4j
@@ -33,6 +35,7 @@ public class UserService {
 
     private final UserRepository userRepository;
     private final IdentityProvider identityProvider;
+    private final HubProvider hubProvider;
 
     @Transactional
     public SignupResponseDto signup(SignupRequestDto request) {
@@ -47,6 +50,11 @@ public class UserService {
             throw new UserSlackIdDuplicateException(request.getSlackId());
         }
 
+        // hub-service Feign으로 실제 hubName을 채운다 (이전엔 빈 문자열로 저장됐음)
+        HubInfo hubInfo = request.getHubId() != null
+                ? hubProvider.get(request.getHubId())
+                : null;
+
         UUID keycloakUserId = identityProvider.register(request.getEmail(), request.getPassword());
 
         try {
@@ -56,7 +64,7 @@ public class UserService {
                     .name(request.getName())
                     .slackId(request.getSlackId())
                     .role(request.getRole())
-                    .hubInfo(new HubInfo(request.getHubId(), ""))
+                    .hubInfo(hubInfo)
                     .companyInfo(request.getCompanyId() != null
                             ? new CompanyInfo(request.getCompanyId(), "")
                             : null)
@@ -91,16 +99,65 @@ public class UserService {
         return UserResponseDto.from(findUserById(userId));
     }
 
-    public Page<UserResponseDto> getUsers(Pageable pageable) {
-        return userRepository.findAll(pageable).map(UserResponseDto::from);
+    public Page<UserResponseDto> getUsers(UserType role, UUID hubId, Pageable pageable) {
+        Page<User> page;
+        if (role != null && hubId != null) {
+            page = userRepository.findAllByRoleAndHubInfo_HubId(role, hubId, pageable);
+        } else if (role != null) {
+            page = userRepository.findAllByRole(role, pageable);
+        } else if (hubId != null) {
+            page = userRepository.findAllByHubInfo_HubId(hubId, pageable);
+        } else {
+            page = userRepository.findAll(pageable);
+        }
+        return page.map(UserResponseDto::from);
+    }
+
+    /**
+     * 내부 서비스 호출용 단건 조회.
+     * <p>외부 노출 GET /api/users/{id}와 달리 권한 검증 없이 즉시 조회한다.
+     * 호출자(예: delivery-service)가 Courier 등록 시 user 검증 + hubId 복사에 사용한다.</p>
+     */
+    public UserResponseDto getInternalUser(UUID userId) {
+        return UserResponseDto.from(findUserById(userId));
+    }
+
+    /**
+     * 내부 서비스 호출용 리스트 조회 (페이지네이션 없음).
+     * <p>role/hubId 조합 4가지를 모두 처리:
+     * <ul>
+     *   <li>role + hubId 둘 다 → 두 조건 AND</li>
+     *   <li>role만 → role 필터</li>
+     *   <li>hubId만 → 허브 필터</li>
+     *   <li>둘 다 null → 전체 (보호용 fallback)</li>
+     * </ul>
+     * 결과는 {@code enabled=true}인 사용자만 반환 (배정 후보 부적합 케이스 제외).</p>
+     */
+    public List<UserResponseDto> searchInternal(UserType role, UUID hubId) {
+        List<User> users;
+        if (role != null && hubId != null) {
+            users = userRepository.findAllByRoleAndHubInfo_HubId(role, hubId);
+        } else if (role != null) {
+            users = userRepository.findAllByRole(role);
+        } else if (hubId != null) {
+            users = userRepository.findAllByHubInfo_HubId(hubId);
+        } else {
+            users = userRepository.findAll(Pageable.unpaged()).getContent();
+        }
+
+        return users.stream()
+                .filter(User::isEnabled)
+                .map(UserResponseDto::from)
+                .toList();
     }
 
     @Transactional
     public UserResponseDto updateUser(UUID userId, UserUpdateRequestDto request) {
         User user = findUserById(userId);
 
+        // 허브 변경 시에도 hub-service Feign으로 실제 hubName을 가져온다.
         HubInfo hubInfo = request.getHubId() != null
-                ? new HubInfo(request.getHubId(), "")
+                ? hubProvider.get(request.getHubId())
                 : null;
         CompanyInfo companyInfo = request.getCompanyId() != null
                 ? new CompanyInfo(request.getCompanyId(), "")
