@@ -23,6 +23,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.UUID;
 
 @Slf4j
@@ -93,6 +94,31 @@ public class UserService {
 
     public Page<UserResponseDto> getUsers(Pageable pageable) {
         return userRepository.findAll(pageable).map(UserResponseDto::from);
+    }
+
+    /**
+     * 내부 서비스 호출용 단건 조회.
+     * <p>외부 노출 GET /api/users/{id}와 달리 권한 검증 없이 즉시 조회한다.
+     * 호출자(예: delivery-service)가 Courier 등록 시 user 검증 + hubId 복사에 사용한다.</p>
+     */
+    public UserResponseDto getInternalUser(UUID userId) {
+        return UserResponseDto.from(findUserById(userId));
+    }
+
+    /**
+     * 내부 서비스 호출용 리스트 조회 (페이지네이션 없음).
+     * <p>특정 role의 사용자를 전체 조회하거나, hubId까지 함께 필터링한다.
+     * 결과는 {@code enabled=true}인 사용자만 반환 (배정 후보 부적합 케이스 제외).</p>
+     */
+    public List<UserResponseDto> searchInternal(UserType role, UUID hubId) {
+        List<User> users = (hubId != null)
+                ? userRepository.findAllByRoleAndHubInfo_HubId(role, hubId)
+                : userRepository.findAllByRole(role);
+
+        return users.stream()
+                .filter(User::isEnabled)
+                .map(UserResponseDto::from)
+                .toList();
     }
 
     @Transactional

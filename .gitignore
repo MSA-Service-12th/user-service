@@ -37,3 +37,4 @@ out/
 .vscode/
 .env*
 kafka.server.truststore.jks
+ignoredocs/
