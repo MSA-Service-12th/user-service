@@ -2,7 +2,9 @@ spring:
   application:
     name: user-service
   config:
-    import: 'optional:configserver:'
+    import:
+      - 'optional:dotenv:'
+      - 'optional:configserver:'
   cloud:
     config:
       discovery:
@@ -17,6 +19,7 @@ spring:
     ssl:
       trust-store-location: classpath:ssl/kafka.server.truststore.jks
       trust-store-password: ${TRUST_STORE_PASSWORD}
+      trust-store-type: PKCS12
     producer:
       acks: all
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
