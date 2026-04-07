@@ -35,7 +35,11 @@ out/
 
 ### VS Code ###
 .vscode/
-.env*
+.env
+!.env.example
 kafka.server.truststore.jks
 ignoredocs/
 gradle.properties
+
+# Kafka SSL truststore
+src/main/resources/ssl/

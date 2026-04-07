@@ -2,11 +2,12 @@ package com.loopang.userservice.domain.service;
 
 import com.loopang.userservice.domain.service.dto.TokenData;
 
+import com.loopang.userservice.domain.vo.UserType;
 import java.util.UUID;
 
 public interface IdentityProvider {
 
-  UUID register(String email, String password);
+  UUID register(String email, String password, UserType role, UUID hubId, UUID companyId);
 
   TokenData login(String email, String password);
 

@@ -1,18 +1,20 @@
 package com.loopang.userservice.infrastructure.keycloak;
 
+import com.loopang.common.exception.BadRequestException;
 import com.loopang.common.exception.CustomException;
 import com.loopang.common.exception.InternalServerException;
 import com.loopang.common.exception.UnAuthorizedException;
 import com.loopang.userservice.domain.service.IdentityProvider;
 import com.loopang.userservice.domain.service.dto.TokenData;
+import com.loopang.userservice.domain.vo.UserType;
 import jakarta.ws.rs.core.Response;
+import java.util.HashMap;
 import lombok.extern.slf4j.Slf4j;
 import org.keycloak.OAuth2Constants;
 import org.keycloak.admin.client.Keycloak;
 import org.keycloak.admin.client.KeycloakBuilder;
 import org.keycloak.admin.client.resource.RealmResource;
 import org.keycloak.admin.client.resource.UsersResource;
-import org.keycloak.representations.AccessTokenResponse;
 import org.keycloak.representations.idm.CredentialRepresentation;
 import org.keycloak.representations.idm.UserRepresentation;
 import org.springframework.http.*;
@@ -47,7 +49,7 @@ public class KeycloakIdentityProvider implements IdentityProvider {
     }
 
     @Override
-    public UUID register(String email, String password) {
+    public UUID register(String email, String password, UserType role, UUID hubId, UUID companyId) {
         UsersResource usersResource = getRealmResource().users();
 
         UserRepresentation user = new UserRepresentation();
@@ -57,6 +59,21 @@ public class KeycloakIdentityProvider implements IdentityProvider {
         user.setEmailVerified(true);
         user.setRequiredActions(List.of());
 
+        // attributes 저장
+        Map<String, List<String>> attributes = new HashMap<>();
+        if (role == null) {
+            throw new BadRequestException("role은 필수입니다.");
+        }
+        attributes.put("role", List.of(role.toRole()));
+        if (hubId != null) {
+            attributes.put("hubId", List.of(hubId.toString()));
+        }
+        if (companyId != null) {
+            attributes.put("companyId", List.of(companyId.toString()));
+        }
+        attributes.put("is_enabled", List.of("true"));
+        user.setAttributes(attributes);
+
         CredentialRepresentation credential = new CredentialRepresentation();
         credential.setType(CredentialRepresentation.PASSWORD);
         credential.setValue(password);
@@ -64,10 +81,18 @@ public class KeycloakIdentityProvider implements IdentityProvider {
         user.setCredentials(List.of(credential));
 
         try (Response response = usersResource.create(user)) {
+
             if (response.getStatus() == 201) {
                 String locationHeader = response.getHeaderString("Location");
                 String userId = locationHeader.substring(locationHeader.lastIndexOf("/") + 1);
+
+
+                UserRepresentation createdUser =
+                    usersResource.get(userId).toRepresentation();
+
+                log.info("[Keycloak] created user attributes={}", createdUser.getAttributes());
                 log.info("[Keycloak] 유저 등록 성공: email={}, id={}", email, userId);
+
                 return UUID.fromString(userId);
             } else if (response.getStatus() == 409) {
                 throw new InternalServerException("Keycloak에 이미 등록된 이메일입니다: " + email);
@@ -83,8 +108,7 @@ public class KeycloakIdentityProvider implements IdentityProvider {
                     "Keycloak 유저 등록 실패: status = " + response.getStatus()
                         + " statusInfo = " + response.getStatusInfo() + " header = " + response.getHeaders()
                         + " headerString = " + response.getHeaderString("Location")
-                        + " Entity = " + response.getEntity());
-
+                );
             }
         }
     }
