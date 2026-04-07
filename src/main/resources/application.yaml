@@ -2,9 +2,7 @@ spring:
   application:
     name: user-service
   config:
-    import:
-      - 'optional:dotenv:'
-      - 'optional:configserver:'
+    import: 'optional:configserver:'
   cloud:
     config:
       discovery:
