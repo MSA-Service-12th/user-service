@@ -1,5 +1,6 @@
 package com.loopang.userservice.infrastructure.keycloak;
 
+import com.loopang.common.exception.CustomException;
 import com.loopang.common.exception.InternalServerException;
 import com.loopang.common.exception.UnAuthorizedException;
 import com.loopang.userservice.domain.service.IdentityProvider;
@@ -18,6 +19,7 @@ import org.springframework.http.*;
 import org.springframework.stereotype.Component;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.List;
@@ -53,6 +55,7 @@ public class KeycloakIdentityProvider implements IdentityProvider {
         user.setEmail(email);
         user.setEnabled(true);
         user.setEmailVerified(true);
+        user.setRequiredActions(List.of());
 
         CredentialRepresentation credential = new CredentialRepresentation();
         credential.setType(CredentialRepresentation.PASSWORD);
@@ -69,13 +72,26 @@ public class KeycloakIdentityProvider implements IdentityProvider {
             } else if (response.getStatus() == 409) {
                 throw new InternalServerException("Keycloak에 이미 등록된 이메일입니다: " + email);
             } else {
-                throw new InternalServerException("Keycloak 유저 등록 실패: status=" + response.getStatus());
+                log.info("[Keycloak] create request username={}, email={}, enabled={}, emailVerified={}, requiredActions={}, credentialCount={}",
+                    user.getUsername(),
+                    user.getEmail(),
+                    user.isEnabled(),
+                    user.isEmailVerified(),
+                    user.getRequiredActions(),
+                    user.getCredentials() == null ? 0 : user.getCredentials().size());
+                throw new InternalServerException(
+                    "Keycloak 유저 등록 실패: status = " + response.getStatus()
+                        + " statusInfo = " + response.getStatusInfo() + " header = " + response.getHeaders()
+                        + " headerString = " + response.getHeaderString("Location")
+                        + " Entity = " + response.getEntity());
+
             }
         }
     }
 
     @Override
     public TokenData login(String email, String password) {
+        log.info("[Keycloak] login request email={}, passwordLength={}", email, password == null ? 0 : password.length());
         String tokenUrl = properties.getServerUrl()
                 + "/realms/" + properties.getRealm()
                 + "/protocol/openid-connect/token";
@@ -108,7 +124,16 @@ public class KeycloakIdentityProvider implements IdentityProvider {
                     .expiresIn(((Number) body.get("expires_in")).longValue())
                     .refreshExpiresIn(((Number) body.get("refresh_expires_in")).longValue())
                     .build();
-        } catch (Exception e) {
+        } catch (HttpClientErrorException e) {
+            log.error("[Keycloak] 로그인 실패 status={}, body={}",
+                e.getStatusCode(),
+                e.getResponseBodyAsString(),
+                e
+            );
+            throw new CustomException(HttpStatus.UNAUTHORIZED,
+                "Keycloak 로그인 실패: " + e.getResponseBodyAsString());
+
+        }catch (Exception e) {
             log.error("[Keycloak] 로그인 실패: {}", email, e);
             throw new UnAuthorizedException("이메일 또는 비밀번호가 올바르지 않습니다.");
         }

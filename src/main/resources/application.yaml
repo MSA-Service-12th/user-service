@@ -19,7 +19,6 @@ eureka:
     register-with-eureka: true
     service-url:
       defaultZone: ${EUREKA_SERVER_URL:http://localhost:18761/eureka}
-    import: 'optional:configserver:'
 
 
 keycloak:

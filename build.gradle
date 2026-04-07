@@ -33,7 +33,7 @@ repositories {
 
 dependencies {
     // 공통 모듈
-    implementation 'com.loopang:common:0.0.5-SNAPSHOT'
+    implementation 'com.loopang:common:0.0.6-SNAPSHOT'
     //keycloak
     implementation 'org.springframework.boot:spring-boot-starter-oauth2-resource-server'
     implementation 'org.keycloak:keycloak-admin-client:24.0.0'

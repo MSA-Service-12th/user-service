@@ -38,3 +38,4 @@ out/
 .env*
 kafka.server.truststore.jks
 ignoredocs/
+gradle.properties
