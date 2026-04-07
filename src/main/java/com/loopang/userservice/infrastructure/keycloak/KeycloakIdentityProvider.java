@@ -1,9 +1,11 @@
 package com.loopang.userservice.infrastructure.keycloak;
 
 import com.loopang.common.exception.BadRequestException;
+import com.loopang.common.exception.ConflictException;
 import com.loopang.common.exception.CustomException;
 import com.loopang.common.exception.InternalServerException;
 import com.loopang.common.exception.UnAuthorizedException;
+import com.loopang.userservice.domain.exception.UserEmailDuplicateException;
 import com.loopang.userservice.domain.service.IdentityProvider;
 import com.loopang.userservice.domain.service.dto.TokenData;
 import com.loopang.userservice.domain.vo.UserType;
@@ -49,7 +51,7 @@ public class KeycloakIdentityProvider implements IdentityProvider {
     }
 
     @Override
-    public UUID register(String email, String password, UserType role, UUID hubId, UUID companyId) {
+    public UUID register(String email, String password, UserType role, UUID companyId, UUID hubId) {
         UsersResource usersResource = getRealmResource().users();
 
         UserRepresentation user = new UserRepresentation();
@@ -87,15 +89,20 @@ public class KeycloakIdentityProvider implements IdentityProvider {
                 String userId = locationHeader.substring(locationHeader.lastIndexOf("/") + 1);
 
 
-                UserRepresentation createdUser =
-                    usersResource.get(userId).toRepresentation();
 
-                log.info("[Keycloak] created user attributes={}", createdUser.getAttributes());
+
                 log.info("[Keycloak] 유저 등록 성공: email={}, id={}", email, userId);
+
+                try {
+                    UserRepresentation createdUser = usersResource.get(userId).toRepresentation();
+                    log.info("[Keycloak] created user attributes={}", createdUser.getAttributes());
+                }catch (Exception ex) {
+                    log.warn("[Keycloak] 유저 생성 후 속성 조회 실패: id={}", userId, ex);
+                }
 
                 return UUID.fromString(userId);
             } else if (response.getStatus() == 409) {
-                throw new InternalServerException("Keycloak에 이미 등록된 이메일입니다: " + email);
+                throw new UserEmailDuplicateException("Keycloak에 이미 등록된 이메일입니다: " + email);
             } else {
                 log.info("[Keycloak] create request username={}, email={}, enabled={}, emailVerified={}, requiredActions={}, credentialCount={}",
                     user.getUsername(),

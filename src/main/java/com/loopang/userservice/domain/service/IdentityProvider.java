@@ -7,7 +7,7 @@ import java.util.UUID;
 
 public interface IdentityProvider {
 
-  UUID register(String email, String password, UserType role, UUID hubId, UUID companyId);
+  UUID register(String email, String password, UserType role, UUID companyId, UUID hubId);
 
   TokenData login(String email, String password);
 
