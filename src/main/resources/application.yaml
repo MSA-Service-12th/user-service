@@ -9,9 +9,24 @@ spring:
         enabled: true
         service-id: config-server
   kafka:
-    # 현재 user-service는 producer 전용 (Outbox로 user-update-topic 발행).
-    # consumer 설정은 향후 hub.updated 등 구독 추가 시 함께 넣는다.
-    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    # producer 전용 (Outbox로 user-update-topic 발행). consumer 설정은 향후 hub.updated 등 구독 추가 시.
+    bootstrap-servers: ${BOOTSTRAP_SERVERS}
+    properties:
+      security.protocol: SSL
+      ssl.endpoint.identification.algorithm: ""
+    ssl:
+      trust-store-location: classpath:ssl/kafka.server.truststore.jks
+      trust-store-password: ${TRUST_STORE_PASSWORD}
+    producer:
+      acks: all
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      properties:
+        enable.idempotence: true
+        max.block.ms: 10000
+        max.in.flight.requests.per.connection: 5
+        retries: 3
+        delivery.timeout.ms: 120000
 
 eureka:
   client:
