@@ -16,8 +16,10 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class SignupRequestDto {
 
-  @NotBlank(message = "아이디를 입력해주세요.")
-  @Size(min = 4, max = 20, message = "아이디는 4자 이상 20자 이하로 입력해주세요.")
+  // 이메일 형식 검증은 Keycloak이 server-side로 수행한다.
+  // 여기서는 길이만 RFC 5321 표준(254자)에 맞춰 제한하여 정상적인 이메일이 DTO 단에서 거부되지 않도록 한다.
+  @NotBlank(message = "이메일을 입력해주세요.")
+  @Size(max = 254, message = "이메일은 254자 이하로 입력해주세요.")
   private String email;
   @NotBlank(message = "비밀번호를 입력해주세요.")
   @Size(min = 8, max = 15, message = "비밀번호는 8자 이상 15자 이하로 입력해주세요.")

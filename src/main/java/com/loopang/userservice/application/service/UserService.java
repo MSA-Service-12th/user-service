@@ -58,7 +58,7 @@ public class UserService {
                 : null;
 
         UUID keycloakUserId = identityProvider.register(request.getEmail(), request.getPassword(),
-            request.getRole(), request.getCompanyId(), request.getHubId());
+            request.getRole(), request.getHubId(), request.getCompanyId());
         try {
             User user = User.builder()
                     .id(keycloakUserId)
