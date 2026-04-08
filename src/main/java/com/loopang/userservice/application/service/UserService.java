@@ -57,8 +57,8 @@ public class UserService {
                 ? hubProvider.get(request.getHubId())
                 : null;
 
-        UUID keycloakUserId = identityProvider.register(request.getEmail(), request.getPassword());
-
+        UUID keycloakUserId = identityProvider.register(request.getEmail(), request.getPassword(),
+            request.getRole(), request.getHubId(), request.getCompanyId());
         try {
             User user = User.builder()
                     .id(keycloakUserId)

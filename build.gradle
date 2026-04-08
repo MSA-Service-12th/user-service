@@ -33,7 +33,7 @@ repositories {
 
 dependencies {
     // 공통 모듈
-    implementation 'com.loopang:common:0.0.5-SNAPSHOT'
+    implementation 'com.loopang:common:0.0.6-SNAPSHOT'
 
     // .env 파일 자동 로딩 (로컬 개발용 환경 변수 관리)
     implementation 'me.paulschwarz:spring-dotenv:4.0.0'

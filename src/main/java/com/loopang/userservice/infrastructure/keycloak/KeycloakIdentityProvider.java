@@ -1,23 +1,27 @@
 package com.loopang.userservice.infrastructure.keycloak;
 
+import com.loopang.common.exception.BadRequestException;
 import com.loopang.common.exception.InternalServerException;
 import com.loopang.common.exception.UnAuthorizedException;
+import com.loopang.userservice.domain.exception.UserEmailDuplicateException;
 import com.loopang.userservice.domain.service.IdentityProvider;
 import com.loopang.userservice.domain.service.dto.TokenData;
+import com.loopang.userservice.domain.vo.UserType;
 import jakarta.ws.rs.core.Response;
+import java.util.HashMap;
 import lombok.extern.slf4j.Slf4j;
 import org.keycloak.OAuth2Constants;
 import org.keycloak.admin.client.Keycloak;
 import org.keycloak.admin.client.KeycloakBuilder;
 import org.keycloak.admin.client.resource.RealmResource;
 import org.keycloak.admin.client.resource.UsersResource;
-import org.keycloak.representations.AccessTokenResponse;
 import org.keycloak.representations.idm.CredentialRepresentation;
 import org.keycloak.representations.idm.UserRepresentation;
 import org.springframework.http.*;
 import org.springframework.stereotype.Component;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.List;
@@ -45,7 +49,7 @@ public class KeycloakIdentityProvider implements IdentityProvider {
     }
 
     @Override
-    public UUID register(String email, String password) {
+    public UUID register(String email, String password, UserType role, UUID hubId, UUID companyId) {
         UsersResource usersResource = getRealmResource().users();
 
         UserRepresentation user = new UserRepresentation();
@@ -53,6 +57,29 @@ public class KeycloakIdentityProvider implements IdentityProvider {
         user.setEmail(email);
         user.setEnabled(true);
         user.setEmailVerified(true);
+        user.setRequiredActions(List.of());
+
+        // attributes 저장
+        Map<String, List<String>> attributes = new HashMap<>();
+        if (role == null) {
+            throw new BadRequestException("role은 필수입니다.");
+        }
+        // 역할별 필수 속성 검증 — null인 채로 Keycloak에 저장되면 권한 체크가 망가지므로 fail-fast.
+        if (role == UserType.COMPANY && companyId == null) {
+            throw new BadRequestException("COMPANY 권한은 companyId가 필수입니다.");
+        }
+        if (role == UserType.HUB && hubId == null) {
+            throw new BadRequestException("HUB 권한은 hubId가 필수입니다.");
+        }
+        attributes.put("role", List.of(role.toRole()));
+        if (hubId != null) {
+            attributes.put("hubId", List.of(hubId.toString()));
+        }
+        if (companyId != null) {
+            attributes.put("companyId", List.of(companyId.toString()));
+        }
+        attributes.put("is_enabled", List.of("true"));
+        user.setAttributes(attributes);
 
         CredentialRepresentation credential = new CredentialRepresentation();
         credential.setType(CredentialRepresentation.PASSWORD);
@@ -61,21 +88,46 @@ public class KeycloakIdentityProvider implements IdentityProvider {
         user.setCredentials(List.of(credential));
 
         try (Response response = usersResource.create(user)) {
+
             if (response.getStatus() == 201) {
                 String locationHeader = response.getHeaderString("Location");
                 String userId = locationHeader.substring(locationHeader.lastIndexOf("/") + 1);
+
+
+
+
                 log.info("[Keycloak] 유저 등록 성공: email={}, id={}", email, userId);
+
+                try {
+                    UserRepresentation createdUser = usersResource.get(userId).toRepresentation();
+                    log.info("[Keycloak] created user attributes={}", createdUser.getAttributes());
+                }catch (Exception ex) {
+                    log.warn("[Keycloak] 유저 생성 후 속성 조회 실패: id={}", userId, ex);
+                }
+
                 return UUID.fromString(userId);
             } else if (response.getStatus() == 409) {
-                throw new InternalServerException("Keycloak에 이미 등록된 이메일입니다: " + email);
+                throw new UserEmailDuplicateException("Keycloak에 이미 등록된 이메일입니다: " + email);
             } else {
-                throw new InternalServerException("Keycloak 유저 등록 실패: status=" + response.getStatus());
+                log.info("[Keycloak] create request username={}, email={}, enabled={}, emailVerified={}, requiredActions={}, credentialCount={}",
+                    user.getUsername(),
+                    user.getEmail(),
+                    user.isEnabled(),
+                    user.isEmailVerified(),
+                    user.getRequiredActions(),
+                    user.getCredentials() == null ? 0 : user.getCredentials().size());
+                throw new InternalServerException(
+                    "Keycloak 유저 등록 실패: status = " + response.getStatus()
+                        + " statusInfo = " + response.getStatusInfo() + " header = " + response.getHeaders()
+                        + " headerString = " + response.getHeaderString("Location")
+                );
             }
         }
     }
 
     @Override
     public TokenData login(String email, String password) {
+        log.info("[Keycloak] login request email={}, passwordLength={}", email, password == null ? 0 : password.length());
         String tokenUrl = properties.getServerUrl()
                 + "/realms/" + properties.getRealm()
                 + "/protocol/openid-connect/token";
@@ -108,9 +160,29 @@ public class KeycloakIdentityProvider implements IdentityProvider {
                     .expiresIn(((Number) body.get("expires_in")).longValue())
                     .refreshExpiresIn(((Number) body.get("refresh_expires_in")).longValue())
                     .build();
-        } catch (Exception e) {
-            log.error("[Keycloak] 로그인 실패: {}", email, e);
+        } catch (HttpClientErrorException e) {
+            // 4xx — 자격 증명 오류 등 클라이언트 측 문제. 401만 인증 실패로 처리하고
+            // 그 외 4xx는 로깅하되 일반적인 인증 실패로 매핑한다. raw response body는
+            // Keycloak 내부 형식이라 외부에 노출하지 않는다.
+            log.error("[Keycloak] 로그인 4xx 응답 email={}, status={}, body={}",
+                email, e.getStatusCode(), e.getResponseBodyAsString(), e);
             throw new UnAuthorizedException("이메일 또는 비밀번호가 올바르지 않습니다.");
+
+        } catch (org.springframework.web.client.HttpServerErrorException e) {
+            // 5xx — Keycloak 측 장애. 인증 실패로 위장하지 않고 업스트림 장애를 그대로 알린다.
+            log.error("[Keycloak] 로그인 5xx 응답 email={}, status={}, body={}",
+                email, e.getStatusCode(), e.getResponseBodyAsString(), e);
+            throw new InternalServerException("인증 서버에 일시적인 문제가 발생했습니다. 잠시 후 다시 시도해주세요.");
+
+        } catch (org.springframework.web.client.ResourceAccessException e) {
+            // 연결 오류 — 네트워크/타임아웃. 인증 문제 아님.
+            log.error("[Keycloak] 로그인 연결 실패 email={}", email, e);
+            throw new InternalServerException("인증 서버에 연결할 수 없습니다. 잠시 후 다시 시도해주세요.");
+
+        } catch (Exception e) {
+            // 그 외 알 수 없는 오류 — 클라이언트에는 일반 메시지로, 로그에는 상세 출력.
+            log.error("[Keycloak] 로그인 알 수 없는 오류 email={}", email, e);
+            throw new InternalServerException("로그인 처리 중 오류가 발생했습니다.");
         }
     }
 
